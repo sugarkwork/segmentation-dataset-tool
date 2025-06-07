@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # Development overrides
+  backend:
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+    environment:
+      - DEBUG=true
+      - PYTHONPATH=/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+
+  frontend:
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - FAST_REFRESH=true
+      - CHOKIDAR_USEPOLLING=true
+    stdin_open: true
+    tty: true
+    ports:
+      - "3000:3000"
+
+  # Database with persistent volume
+  database:
+    volumes:
+      - dev_db_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+
+volumes:
+  dev_db_data:

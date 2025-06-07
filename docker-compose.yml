@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  # MariaDB Database
+  database:
+    image: mariadb:10.6
+    container_name: segmentation_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: segmentation_dataset
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: app_password
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ./database/my.cnf:/etc/mysql/conf.d/my.cnf
+    ports:
+      - "3306:3306"
+    networks:
+      - segmentation_network
+
+  # FastAPI Backend
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: segmentation_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+pymysql://app_user:app_password@database:3306/segmentation_dataset
+      SECRET_KEY: your-secret-key-change-in-production
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      UPLOAD_DIR: /app/uploads
+      MAX_FILE_SIZE: 10485760  # 10MB
+    volumes:
+      - ./backend:/app
+      - upload_data:/app/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      - database
+    networks:
+      - segmentation_network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: segmentation_frontend
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: http://localhost:8000
+      REACT_APP_WS_URL: ws://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - segmentation_network
+    command: npm start
+
+  # Nginx Reverse Proxy (Optional, for production)
+  nginx:
+    image: nginx:alpine
+    container_name: segmentation_nginx
+    restart: unless-stopped
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf
+      - upload_data:/var/www/uploads:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - segmentation_network
+    profiles:
+      - production
+
+  # Redis (for future caching and session management)
+  redis:
+    image: redis:alpine
+    container_name: segmentation_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - segmentation_network
+    profiles:
+      - production
+
+volumes:
+  mariadb_data:
+  upload_data:
+  redis_data:
+
+networks:
+  segmentation_network:
+    driver: bridge

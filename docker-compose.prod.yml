@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # Production overrides
+  backend:
+    restart: unless-stopped
+    environment:
+      - DEBUG=false
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  frontend:
+    restart: unless-stopped
+    command: npm run build && npx serve -s build -l 3000
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  database:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+
+  # Nginx reverse proxy for production
+  nginx:
+    image: nginx:alpine
+    container_name: segmentation_nginx
+    restart: unless-stopped
+    volumes:
+      - ./docker/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+      - upload_data:/var/www/uploads:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
